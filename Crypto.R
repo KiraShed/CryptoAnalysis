@@ -1,7 +1,9 @@
 install.packages("crypto2")
 install.packages("tidyverse")
+install.packages("plotly")
 library(crypto2)
 library(tidyverse)
+library(plotly)
 library(lubridate) # working with date/times
 library(rvest) # web scraping
 library(stats) # statistics package
@@ -35,19 +37,19 @@ library(janitor) #used in the tutorial for the "clean_names()" function
 
 # ?crypto2
 
-
+#Add listing datasets for crypto and fiat
 ls <-  crypto_listings()
 fls <-  fiat_list()
 ls %>% glimpse
-?crypto_listings
 fls %>% glimpse
 
-# only download the top 100 crypto currencies based on their market capitalization
-all_coins_mcsort <- crypto_listings(which="historical", quote=TRUE,
-                                         end_date="20240503", interval="month", sort="market_cap",
-                                          sort_dir="desc")
+## Download the top 100 crypto currencies based on their market capitalization ####
+# all_coins_mcsort <- crypto_listings(which="historical", quote=TRUE,
+#                                          end_date="20240503", interval="month", sort="market_cap",
+#                                           sort_dir="desc")
+
 #Save to RDS
-all_coins_mcsort %>% write_rds("all_coins_mcsort.rds")
+#all_coins_mcsort %>% write_rds("all_coins_mcsort.rds")
 
 ?read_rds
 
@@ -60,21 +62,15 @@ all_coins_mcsort %>% glimpse
 #Create unique vector of coin names
 all_coins <-  unique(all_coins_mcsort$name)
 
-### IMPORT new data set
+## IMPORT new data set ####
 listings <- crypto_list(only_active = F, add_untracked = T)
 
 #Add dataset with a description of the crypto
-crypto_info <-  crypto_info()
+#crypto_info <-  crypto_info()
 crypto_info %>% write_rds("crypto_info.rds")
 crypto_info %>% glimpse 
 
-#Data Visualisation of the main dataset all_coins_mcsort
-all_coins_mcsort %>% 
-  filter(name == "Bitcoin") %>% 
-  ggplot(aes(date,USD_price))+
-  geom_line()
-plot(all_coins_mcsort$date, all_coins_mcsort$USD_price)
-
+# Slice top50 from all crypto ####
 top_50_by_marketcap <- 
   crypto_list() %>% #list all cryptos agaon
   arrange(rank) %>% #arrange the based on market cap rank
@@ -84,12 +80,16 @@ top_50_crypto_prices <-
   crypto_history(top_50_by_marketcap) %>% #get data for all 100 coins
   mutate(timestamp = as.Date(as.character(timestamp))) #fix the timestamp into a date object
 
-#Plot TOP50
-top_50_crypto_prices %>% 
+# Plot TOP50 ####
+#Data Visualisation of the main dataset all_coins_mcsort
+top50plot <-  
+  top_50_crypto_prices %>% 
   ggplot(aes(timestamp,close, col = name))+
-  geom_line()
+  geom_line() 
 
-#SECTION 2 - CALCULATE CRYPTOCURRENCY RETURNS
+# Making interactive graph ####
+animated_top50_graph <-  ggplotly(top50plot)
+# SECTION 2 - CALCULATE CRYPTOCURRENCY RETURNS ####
 crypto_daily_returns <- 
   top_50_crypto_prices %>% 
   arrange(symbol, timestamp) %>% #make sure to arrange the data first so the lag calculations aren't erroneous
@@ -100,7 +100,7 @@ crypto_daily_returns <-
 crypto_daily_returns #view the final results
 
 
-#SECTION 3 - WORKING WITH HIERARCHICAL CLUSTERING ALGORITHM
+# SECTION 3 - WORKING WITH HIERARCHICAL CLUSTERING ALGORITHM ####
 
 hc <- 
   crypto_daily_returns %>% 
@@ -127,3 +127,10 @@ hc %>%
   ggplot() +
   labs(title = 'Dendrogram of the top 50 Cryptocurrencies by market cap')
 
+# SECTION 4: CLASSIFY EACH CRYPTO INTO A CORRESPONDING CLUSTER ####
+
+#extract the cluster values for each cryptocurrency
+cutree(hc, k = number_clusters) %>% 
+  as.data.frame() %>% 
+  rename(cluster = 1) %>% 
+  mutate(token_name = rownames(.))  
