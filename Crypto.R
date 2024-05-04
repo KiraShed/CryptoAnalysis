@@ -2,6 +2,15 @@ install.packages("crypto2")
 install.packages("tidyverse")
 library(crypto2)
 library(tidyverse)
+library(lubridate) # working with date/times
+library(rvest) # web scraping
+library(stats) # statistics package
+library(magrittr) # operators that reduce development time 
+library(quantmod) # package useful for quantitative trading & research
+library(tidyquant) # a wrapper with convenient functions 
+library(dendextend) # a package for creating visually appealing dendrograms
+library(PortfolioAnalytics) # a package to quickly evaluate portfolio performance
+library(janitor) #used in the tutorial for the "clean_names()" function
 
 # crypto_global_quotes()
 # Retrieves historical quotes for the global aggregate market
@@ -53,3 +62,68 @@ all_coins <-  unique(all_coins_mcsort$name)
 
 ### IMPORT new data set
 listings <- crypto_list(only_active = F, add_untracked = T)
+
+#Add dataset with a description of the crypto
+crypto_info <-  crypto_info()
+crypto_info %>% write_rds("crypto_info.rds")
+crypto_info %>% glimpse 
+
+#Data Visualisation of the main dataset all_coins_mcsort
+all_coins_mcsort %>% 
+  filter(name == "Bitcoin") %>% 
+  ggplot(aes(date,USD_price))+
+  geom_line()
+plot(all_coins_mcsort$date, all_coins_mcsort$USD_price)
+
+top_50_by_marketcap <- 
+  crypto_list() %>% #list all cryptos agaon
+  arrange(rank) %>% #arrange the based on market cap rank
+  slice(1:50) #select rows 1 to 50
+
+top_50_crypto_prices <-
+  crypto_history(top_50_by_marketcap) %>% #get data for all 100 coins
+  mutate(timestamp = as.Date(as.character(timestamp))) #fix the timestamp into a date object
+
+#Plot TOP50
+top_50_crypto_prices %>% 
+  ggplot(aes(timestamp,close, col = name))+
+  geom_line()
+
+#SECTION 2 - CALCULATE CRYPTOCURRENCY RETURNS
+crypto_daily_returns <- 
+  top_50_crypto_prices %>% 
+  arrange(symbol, timestamp) %>% #make sure to arrange the data first so the lag calculations aren't erroneous
+  group_by(symbol) %>%  
+  mutate(daily_return = close/lag(close, 1)-1) %>% #calculate the return in prices
+  select(timestamp, name, symbol, daily_return) #select a subset of the columns - not 100% neccecary
+
+crypto_daily_returns #view the final results
+
+
+#SECTION 3 - WORKING WITH HIERARCHICAL CLUSTERING ALGORITHM
+
+hc <- 
+  crypto_daily_returns %>% 
+  pivot_wider(id_cols = timestamp, names_from = name, values_from = daily_return) %>% #make the data wide, instead of long
+  select(-timestamp) %>% #remove the timestamp - we want to exclude these from the calculation
+  cor(use = 'complete.obs') %>% #correlation matrix 
+  abs() %>% #absolute value
+  dist() %>% #distance matrix
+  hclust() #hierarchical clustering
+
+hc %>% 
+  as.dendrogram() %>% #convert clustering object into dendrogram
+  plot() #view the results
+
+number_clusters <- 9 #how many clusters do you want to select
+
+hc %>% 
+  as.dendrogram() %>% 
+  color_branches(k = number_clusters) %>% 
+  color_labels(k = number_clusters) %>% 
+  set('labels_cex', 1) %>% 
+  # plot()
+  as.ggdend() %>% 
+  ggplot() +
+  labs(title = 'Dendrogram of the top 50 Cryptocurrencies by market cap')
+
